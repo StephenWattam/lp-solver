@@ -1,6 +1,8 @@
 
 import os, sys
 from .parser import parse_file
+from .presolve import to_standard_form
+from .solve import solve
 
 VERSION = "0.1.0"
 
@@ -14,17 +16,27 @@ def main():
         sys.exit(1)
 
     filename = sys.argv[2]
-    print(f"Loading LP problem from CPLEX LP format, filename={filename}")
+
+    # 1) Load the problem from disk
+    print(f"1) Loading LP problem from CPLEX LP format, filename={filename}...")
     problem = parse_file(filename)
-
-
     print("")
     print("Problem constructed")
-    print("")
-    print(f"Objective function: {problem.objective}")
-    print(f"Subject to:")
-    for c in problem.constraints:
-        print(f"  {c.name}: {c}")
+    problem.summarise()
 
-    print("Across variables:")
-    print(f"{problem.symbols}")
+
+
+
+
+    # 2) Convert to standard form symbolically
+    print("2) Converting to standard form...")
+    problem = to_standard_form(problem)
+
+
+
+    # 3) Build a tableau and assess optimality
+    print("3) Solving...")
+    solution = solve(problem)
+
+    problem.summarise()
+

@@ -8,13 +8,14 @@ class LPProblem:
 
         self.symbols     = SymbolTable()
         self.objective   = None
-        self.constraints = []
+        self.constraints = {}
 
-    def add_constraint(self, constraint):
-        self.constraints.append(constraint)
+    def add_constraint(self, name, constraint):
+        self.constraints[name] = constraint
 
-    def set_objective(self, expression):
+    def set_objective(self, expression, mode):
         self.objective = expression
+        self.mode      = mode
 
     def get_expression(self, name, terms):
 
@@ -30,6 +31,16 @@ class LPProblem:
 
         inequal = Inequality(self, name, terms, greater_than, strict, constant)
         return inequal
+
+    def summarise(self):
+        print(f"Objective function: {self.mode}imise {self.objective}")
+        print(f"Subject to:")
+        for name, c in self.constraints.items():
+            print(f"  {name}: {c}")
+        print("Across variables:")
+        for name, var in self.symbols.table.items():
+            print(f"  {name}: {var}")
+
 
 
 
@@ -110,20 +121,40 @@ class Expression:
         terms_as_string = " + ".join([f"{t[0] if t[0] != 1 else ''}{t[1].name}" for t in self.terms])
         return f"{terms_as_string}"
 
+    def multiply(self, coefficient):
+        new_terms = []
+        for term in self.terms:
+            new_terms.append( (term[0] * coefficient, term[1]) )
+
+        self.terms = new_terms
+
+    def find_coefficient_for_variable(self, variable, default=None):
+        for coefficient, var in self.terms:
+            if var == variable:
+                return coefficient
+        return default
+
 
 class Inequality:
 
     def __init__(self, problem, name, terms, greater_than, strict, constant):
         self.name         = name
         self.expression   = Expression(problem, name, terms)
-        self.greater_than = greater_than
-        self.strict       = strict
+        self.greater_than = greater_than # Bool
+        self.strict       = strict       # Bool
         self.constant     = constant
 
     def __str__(self):
         relation = ">" if self.greater_than else "<"
         relation = f"{relation}=" if not self.strict else relation
         return f"{self.expression} {relation} {self.constant}"
+
+    def invert(self):
+        """Convert an x < y constraint to a -x > y constraint"""
+
+        self.expression.multiply(-1)
+        self.constant    *= -1
+        self.greater_than = not self.greater_than
 
 class Equation:
 
@@ -133,7 +164,7 @@ class Equation:
         self.constant   = constant
 
     def __str__(self):
-        return f"<eq: {self.expression} = {self.constant}>"
+        return f"{self.expression} = {self.constant}"
 
 
 class Constraint:

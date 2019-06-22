@@ -112,10 +112,6 @@ class Section:
             elif token[0] == "free":
                 pass
 
-            # # Unary negation: a minus operator is followed by a number and preceeded by something other than an identifier
-            # # This rule omits the negation.  The next rule amends the following number.
-            # elif token[0] == "operator" and token[1] == "-" and i < len(tokens)-1 and tokens[i+1][0] == "number" and i > 0 and (tokens[i-1] != "identifier" and tokens
-
             # Case where the next token after the newline is an operator or relation, meaning the expression
             # continues on the next line
             elif token[0] == "newline" and i < len(tokens)-1 and (tokens[i+1][0] == "relation" or tokens[i+1][0] == "operator"):
@@ -157,9 +153,9 @@ class Section:
                 phrase_tokens.append(token)
 
         # And show the people at home what we've done
-        print("Tokens:")
-        for n, tks in phrases.items():
-            print(f"{n}: {tks}")
+        # print("Tokens:")
+        # for n, tks in phrases.items():
+        #     print(f"{n}: {tks}")
         # for i, tok in enumerate(new_tokens):
         #     print(f"[{i}] {tok}")
         self.tokens = phrases
@@ -172,23 +168,22 @@ class Section:
         # Parse tokens into another IR that is more suited to computation
         terms = []
         coefficient = 1.0
-        var = None
+        negative = False
         for token in tokens:
             if token[0] == "number":
                 coefficient = float(token[1])
             elif token[0] == "operator" and token[1] == "-":
-                coefficient *= 1
+                negative = not negative
             elif token[0] == "identifier":
                 var = problem.symbols.get(token[1], create=True)
-                terms.append( (coefficient, var) )
-                var = None
+                terms.append( (coefficient * (-1 if negative else 1), var) )
                 coefficient = 1
+                negative = False
             elif token[0] == "operator" and token[1] == "+":
                 pass    # Ignore
             else:
                 error(f"Unexpected term in expression with name {name}: {token[1]}")
 
-        print(f"TERMS: {terms}")
         return terms
 
 
@@ -203,6 +198,10 @@ class Section:
 
 class Objective(Section):
 
+    def __init__(self, mode):
+        super().__init__()
+        self.mode = mode
+
     def build_ir(self, problem):
         if len(self.tokens) > 1:
             error("Too many objective expressions -- this library only supports one right now")
@@ -215,8 +214,8 @@ class Objective(Section):
 
         terms = self._token_expression_to_terms(problem, name, tokens)
 
-        print(f"{problem.get_expression(name, terms)}")
-        problem.set_objective(problem.get_expression(name, terms))
+        # print(f"{problem.get_expression(name, terms)}")
+        problem.set_objective(problem.get_expression(name, terms), self.mode)
 
 
 class Constraints(Section):
@@ -231,8 +230,12 @@ class Constraints(Section):
             #
             # - x1 + x2 + x3 + 10 x4 <= 20
 
+
             if len(tokens) < 3:
                 error(f"Not enough tokens to form a meaningful constraint, name {name}.  Token list: {tokens}")
+            # We expect the RHS to be a number, so this is the place to patch unary negation
+            if tokens[-1][0] == "number" and tokens[-2][0] == "operator" and tokens[-2][1] == "-":
+                tokens = tokens[:-2] + [("number", -1*float(tokens[-1][1]))]
             if tokens[-1][0] != "number":
                 error(f"Expected number (coefficient) on RHS of constraint with name {name} but found token: {tokens[-1]}")
             if tokens[-2][0] != "relation":
@@ -248,14 +251,13 @@ class Constraints(Section):
 
             # If the relation is an equals, get an equation
             if relation == "=":
-                constraint = problem.get_equation(f"_constraint_{name}", terms, constant)
+                constraint = problem.get_equation(f"constraint_eq_{name}", terms, constant)
             else:
-                constraint = problem.get_inequality(f"_constraint_{name}", terms,
+                constraint = problem.get_inequality(f"constraint_ineq_{name}", terms,
                         True if relation in [">", ">=", "=>"] else False, 
                         False if "=" in relation else True, constant)
 
-            print(f"CONSTRAINT: {constraint}")
-            problem.add_constraint(constraint)
+            problem.add_constraint(name, constraint)
 
 class Bounds(Section):
 
@@ -340,8 +342,6 @@ class Bounds(Section):
                 upper_relation = tokens[3][1]
                 upper          = float(tokens[4][1])
 
-                print(f"## {lower} << {upper}")
-
                 # For us to add these in the same format we need to normalise them to the same format
                 # as the single-bound case above, which means identifier-relation-number.
                 self._set_variable_bounds(problem, identifier, RELATION_INVERSION[lower_relation], lower)
@@ -390,11 +390,8 @@ def parse_string(string):
     that is of use for further solver stages"""
 
     problem = ir.LPProblem()
-
     string = _strip_comments(string)
-
     sections = _split_sections(string)
-    print(f" -> Sections: {sections}")
 
     # Parse each section
     for section in sections:
@@ -416,7 +413,8 @@ def _strip_comments(string):
     return string
 
 
-SECTION_PATTERN_OBJECTIVE   = "m(ax|in)(imize|imum)?\s*"
+SECTION_PATTERN_MAX_OBJECTIVE   = "max(imize|imum)?\s*"
+SECTION_PATTERN_MIN_OBJECTIVE   = "min(imize|imum)?\s*"
 SECTION_PATTERN_CONSTRAINTS = "(subject to|such that|st|s\\.t\\.)\s*"
 SECTION_PATTERN_BOUNDS      = "bounds?\s*"
 SECTION_PATTERN_INT_VARS    = "gen(eral|erals)?\s*"
@@ -428,11 +426,13 @@ def _split_sections(string):
     sections = []
 
     section = None
-    for line in lines:
+    for i, line in enumerate(lines):
 
         new_section = None
-        if re.match(SECTION_PATTERN_OBJECTIVE, line, flags=re.I):
-            new_section = Objective()
+        if re.match(SECTION_PATTERN_MAX_OBJECTIVE, line, flags=re.I):
+            new_section = Objective("max")
+        elif re.match(SECTION_PATTERN_MIN_OBJECTIVE, line, flags=re.I):
+            new_section = Objective("min")
         elif re.match(SECTION_PATTERN_CONSTRAINTS, line, flags=re.I):
             new_section = Constraints()
         elif re.match(SECTION_PATTERN_BOUNDS, line, flags=re.I):
@@ -443,9 +443,11 @@ def _split_sections(string):
             new_section = BinVars()
         elif re.match(END_PATTERN, line, flags=re.I):
             pass    # Throw this one away
+        elif re.match("^\s*$", line, flags=re.I):
+            pass    # empty line
         else:
             if section is None:
-                error(f"Error --- non-section statement outside of section: {line}")
+                error(f"Error --- non-section statement outside of section: Line {i}, '{line}'")
             # Add line to section
             section.append_raw(line)
 
