@@ -1,7 +1,6 @@
 
 import re
-
-
+from . import ir
 
 class Buffer:
 
@@ -39,18 +38,12 @@ class Buffer:
 
 
 
-class Expression:
-
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.name = ""
-
 
 class Section:
 
     def __init__(self):
         self.buf = Buffer("")
-        self.tokens = []
+        self.tokens = {}
 
     def append_raw(self, string):
         self.buf.string += f"\n{string}"
@@ -60,18 +53,18 @@ class Section:
         IDENTIFIER_PATTERN                  = "[AaBbCcDdFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz\!\"#$%&()/,;?@_`'{}|~][a-zA-Z0-9\!\"#$%&()/,;?@_`'{}|~.]*"
         NAME_SEPARATOR_PATTERN              = "\s*:\s*"
         LINE_SEPARATOR_PATTERN              = "\n"
-        NUMBER_PATTERN                      = "[0-9]+(.[0-9]+)?(e[0-9]+(\.[0-9]+)?)?"
-        UNARY_NEGATION_PATTERN              = "-"
+        NUMBER_PATTERN                      = "([0-9]+(.[0-9]+)?(e[0-9]+(\.[0-9]+)?)?|(-|\+)inf(inity)?)"
         WHITESPACE_PERMITTED_IN_EXPRESSIONS = "\s+"
         RELATION_PATTERN                    = "(<|<=|=<|>|>=|=>|=)"
         OPERATOR_PATTERN                    = "(\+|-)"
+        VARIABLE_FREE_PATTERN               = "free"
 
         tokens = []
         while not self.buf.empty():
             if self.buf.peek(NUMBER_PATTERN):
                 tokens.append( ("number", self.buf.consume(NUMBER_PATTERN)) )
-            elif self.buf.consume(UNARY_NEGATION_PATTERN):
-                tokens.append( ("negate", "-") )
+            elif self.buf.peek(VARIABLE_FREE_PATTERN):
+                tokens.append( ("free", self.buf.consume(VARIABLE_FREE_PATTERN)) )
             elif self.buf.peek(IDENTIFIER_PATTERN):
                 tokens.append( ("identifier", self.buf.consume(IDENTIFIER_PATTERN)) )
             elif self.buf.peek(OPERATOR_PATTERN):
@@ -106,6 +99,22 @@ class Section:
             # We have used the name separator character above to identify a label, so can discard this token
             elif token[0] == "name_separator":
                 pass
+
+            # If we have variable name followed by "free" then this variable needs omitting and we'll put +-inf on the token
+            # list instead to ensure a consistent format
+            elif token[0] == "identifier" and i < len(tokens)-1 and tokens[i+1][0] == "free":
+                new_tokens.append( ("number", "-infinity") )
+                new_tokens.append( ("relation", "<=") )
+                new_tokens.append( token )
+                new_tokens.append( ("relation", "<=") )
+                new_tokens.append( ("number", "+infinity") )
+            # And the case for the 'free' marker to make this work:
+            elif token[0] == "free":
+                pass
+
+            # # Unary negation: a minus operator is followed by a number and preceeded by something other than an identifier
+            # # This rule omits the negation.  The next rule amends the following number.
+            # elif token[0] == "operator" and token[1] == "-" and i < len(tokens)-1 and tokens[i+1][0] == "number" and i > 0 and (tokens[i-1] != "identifier" and tokens
 
             # Case where the next token after the newline is an operator or relation, meaning the expression
             # continues on the next line
@@ -156,31 +165,180 @@ class Section:
         expressions = []
 
 
-    def parse(self):
+    def build_ir(self, problem):
         print("STUB: Section#parse in parser.py")
         pass
 
+
+
+
+
+
 class Objective(Section):
 
-    def parse(self):
+    def build_ir(self, problem):
         print(f"<objective>")
 
-        # TODO: put the value somewhere.
-        #return Objective(expression)
+        if len(self.tokens) > 1:
+            error("Too many objective expressions -- this library only supports one right now")
+
+        # Build an expression object out of the token list
+        #
+        # TODO: I'm not sure how I want to encode this yet, so
+        #       will worry about that later.
+        name, tokens = list(self.tokens.items())[0]
+        problem.set_objective(ir.Expression(name, tokens))
+
 
 class Constraints(Section):
 
-    def parse(self):
-        pass
+    def build_ir(self, problem):
+        print(f"<constraints>")
+
+        # Add a list of constraints
+        payload = []
+        for name, tokens in self.tokens.items():
+
+            # Each constraint should be composed of an expression, a relation,
+            # and a number, e.g.:
+            #
+            # - x1 + x2 + x3 + 10 x4 <= 20
+
+            if len(tokens) < 3:
+                error(f"Not enough tokens to form a meaningful constraint, name {name}.  Token list: {tokens}")
+            if tokens[-1][0] != "number":
+                error(f"Expected number (coefficient) on RHS of constraint with name {name} but found token: {tokens[-1]}")
+            if tokens[-2][0] != "relation":
+                error(f"Expected a relation as the penultimate token in constraint with name {name}, but found token {tokens[-2]}")
+
+            expression = ir.Expression(f"_constraint_{name}", tokens[:-2])
+            relation = tokens[-2][1]    # TODO: represent more usefully
+            constant = tokens[-1][1]    # TODO: parse
+
+            problem.add_constraint(ir.Constraint(name, expression, relation, constant))
 
 class Bounds(Section):
-    pass
+
+
+    def _set_variable_bounds(self, problem, identifier, relation, number):
+        """Sets variable bounds on the assumption that the statement is in the form:
+
+        var rel number, e.g.
+        x5 < 4.5
+        y > 64
+        buses = 10
+        """
+
+        var = problem.symbols.get(identifier, create=True)
+
+        if relation in [">", ">=", "=>"]:
+            var.set_lower_bound(number, strict=False if "=" in relation else True)
+        if relation in ["<", "<=", "=<"]:
+            var.set_lower_bound(number, strict=False if "=" in relation else True)
+        if relation in "=":
+            var.set_lower_bound(number, strict=False)
+            var.set_upper_bound(number, strict=False)
+
+
+    def build_ir(self, problem):
+        print(f"<bounds>")
+
+        RELATION_INVERSION = {">": "<",
+                              ">=": "<=",
+                              "=>": "<=",
+                              "=": "=",
+                              "<": ">",
+                              "<=": ">=",
+                              "=<": ">="}
+
+        payload = []
+        for name, tokens in self.tokens.items():
+
+            # Case where bounds are given as a single, upper or lower:
+            #
+            # x5 >= 3.4
+            # 4.6 <= x2
+            #
+            if len(tokens) == 3:
+                if tokens[1][0] != "relation":
+                    error(f"Bounds given with a single relation, yet that relation is not the middle token.  Bound name: {name}, token list: {tokens}")
+
+                if not ((tokens[0][0] == "identifier" and tokens[2][0] == "number") or (tokens[0][0] == "number" and tokens[2][0] == "identifier")):
+                    error(f"Expected an identifier and number as bounds but found something else.  Bound name: {name}, token list: {tokens}")
+
+
+                # Normalise this to have the identifier on the LHS
+                if tokens[0][0] == "identifier":
+                    identifier = tokens[0][1]
+                    relation = tokens[1][1]
+                    number = tokens[2][1]
+                elif tokens[0][1] == "number":
+                    identifier = tokens[2][1]
+                    relation = RELATION_INVERSION[tokens[1][1]]
+                    number = tokens[0][1]
+
+
+                # We are now of the format:
+                #
+                # identifier relation number, e.g.
+                # x5 > 6
+                # x2 <= 4
+                #
+                self._set_variable_bounds(problem, identifier, relation, number)
+
+
+            # Case where bounds as given as number relation identifier relation number
+            #
+            #  0 <= x1 <= 40
+            #  2 <= x4 <= 3
+            if len(tokens) == 5:
+                if tokens[0][0] != tokens[4][0] or tokens[1][0] != tokens[3][0] or tokens[2][0] != "identifier" or tokens[0][0] != "number" or tokens[1][0] != "relation":
+                    error(f"Expected <number, relation, identifier, relation, number> but got something else.  Bound name: {name}, token list: {tokens}")
+
+                lower          = tokens[0][1]
+                lower_relation = tokens[1][1]
+                identifier     = tokens[2][1]
+                upper_relation = tokens[3][1]
+                upper          = tokens[4][1]
+
+                # For us to add these in the same format we need to normalise them to the same format
+                # as the single-bound case above, which means identifier-relation-number.
+                self._set_variable_bounds(problem, identifier, RELATION_INVERSION[lower_relation], lower)
+                self._set_variable_bounds(problem, identifier, upper_relation, upper)
+
 
 class IntVars(Section):
-    pass
+
+    def build_ir(self, problem):
+        print(f"<int vars>")
+
+
+        for name, tokens in self.tokens.items():
+            if len(tokens) > 1 and tokens[0][0] != "identifier":
+                error("Expected only a single token identifier to set to general use.  Rule name: {name}, token list: {tokens}")
+
+            var = problem.symbols.get(tokens[0][1], create=True)
+            var.set_binary(False)
+
 
 class BinVars(Section):
-    pass
+
+    def build_ir(self, problem):
+        print(f"<bin vars>")
+
+        for name, tokens in self.tokens.items():
+            if len(tokens) > 1 and tokens[0][0] != "identifier":
+                error("Expected only a single token identifier to set to binary mode.  Rule name: {name}, token list: {tokens}")
+
+            var = problem.symbols.get(tokens[0][1], create=True)
+            var.set_binary(Talse)
+
+
+
+
+
+
+
 
 
 
@@ -195,6 +353,8 @@ def parse_string(string):
     """Parse an LP-format string, returning an intermediate representation
     that is of use for further solver stages"""
 
+    problem = ir.LPProblem()
+
     string = _strip_comments(string)
 
     sections = _split_sections(string)
@@ -203,7 +363,7 @@ def parse_string(string):
     # Parse each section
     for section in sections:
         section.tokenise()
-        section.parse()
+        section.build_ir(problem)
 
     return None
 
