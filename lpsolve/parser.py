@@ -55,7 +55,7 @@ class Section:
         LINE_SEPARATOR_PATTERN              = "\n"
         NUMBER_PATTERN                      = "([0-9]+(.[0-9]+)?(e[0-9]+(\.[0-9]+)?)?|(-|\+)inf(inity)?)"
         WHITESPACE_PERMITTED_IN_EXPRESSIONS = "\s+"
-        RELATION_PATTERN                    = "(<|<=|=<|>|>=|=>|=)"
+        RELATION_PATTERN                    = "(<=|=<|>=|=>|=|<|>)"
         OPERATOR_PATTERN                    = "(\+|-)"
         VARIABLE_FREE_PATTERN               = "free"
 
@@ -103,11 +103,11 @@ class Section:
             # If we have variable name followed by "free" then this variable needs omitting and we'll put +-inf on the token
             # list instead to ensure a consistent format
             elif token[0] == "identifier" and i < len(tokens)-1 and tokens[i+1][0] == "free":
-                new_tokens.append( ("number", "-infinity") )
+                new_tokens.append( ("number", float("-infinity")) )
                 new_tokens.append( ("relation", "<=") )
                 new_tokens.append( token )
                 new_tokens.append( ("relation", "<=") )
-                new_tokens.append( ("number", "+infinity") )
+                new_tokens.append( ("number", float("+infinity")) )
             # And the case for the 'free' marker to make this work:
             elif token[0] == "free":
                 pass
@@ -130,6 +130,9 @@ class Section:
             # meaning this is the end of an expression
             elif token[0] == "newline" and i > 0 and tokens[i-1][0] != "relation" and tokens[i-1][0] != "operator" and i < len(tokens)-1 and (tokens[i+1][0] != "operator" and tokens[i+1][0] != "relation"):
                 new_tokens.append( ("end_phrase", "\n") )
+
+            elif token[0] == "number":
+                new_tokens.append( ("number", float(token[1])) )
             else:
                 new_tokens.append(token)
 
@@ -161,8 +164,32 @@ class Section:
         #     print(f"[{i}] {tok}")
         self.tokens = phrases
 
-    def _parse_phrases(self):
-        expressions = []
+    def _token_expression_to_terms(self, problem, name, tokens):
+        """Converts parsed tokens to algorithmic terms.
+
+        Necessary anywhere where expressions are parsed."""
+
+        # Parse tokens into another IR that is more suited to computation
+        terms = []
+        coefficient = 1.0
+        var = None
+        for token in tokens:
+            if token[0] == "number":
+                coefficient = float(token[1])
+            elif token[0] == "operator" and token[1] == "-":
+                coefficient *= 1
+            elif token[0] == "identifier":
+                var = problem.symbols.get(token[1], create=True)
+                terms.append( (coefficient, var) )
+                var = None
+                coefficient = 1
+            elif token[0] == "operator" and token[1] == "+":
+                pass    # Ignore
+            else:
+                error(f"Unexpected term in expression with name {name}: {token[1]}")
+
+        print(f"TERMS: {terms}")
+        return terms
 
 
     def build_ir(self, problem):
@@ -177,8 +204,6 @@ class Section:
 class Objective(Section):
 
     def build_ir(self, problem):
-        print(f"<objective>")
-
         if len(self.tokens) > 1:
             error("Too many objective expressions -- this library only supports one right now")
 
@@ -187,14 +212,16 @@ class Objective(Section):
         # TODO: I'm not sure how I want to encode this yet, so
         #       will worry about that later.
         name, tokens = list(self.tokens.items())[0]
-        problem.set_objective(ir.Expression(name, tokens))
+
+        terms = self._token_expression_to_terms(problem, name, tokens)
+
+        print(f"{problem.get_expression(name, terms)}")
+        problem.set_objective(problem.get_expression(name, terms))
 
 
 class Constraints(Section):
 
     def build_ir(self, problem):
-        print(f"<constraints>")
-
         # Add a list of constraints
         payload = []
         for name, tokens in self.tokens.items():
@@ -211,11 +238,24 @@ class Constraints(Section):
             if tokens[-2][0] != "relation":
                 error(f"Expected a relation as the penultimate token in constraint with name {name}, but found token {tokens[-2]}")
 
-            expression = ir.Expression(f"_constraint_{name}", tokens[:-2])
+
             relation = tokens[-2][1]    # TODO: represent more usefully
             constant = tokens[-1][1]    # TODO: parse
 
-            problem.add_constraint(ir.Constraint(name, expression, relation, constant))
+
+            terms = self._token_expression_to_terms(problem, name, tokens[:-2])
+
+
+            # If the relation is an equals, get an equation
+            if relation == "=":
+                constraint = problem.get_equation(f"_constraint_{name}", terms, constant)
+            else:
+                constraint = problem.get_inequality(f"_constraint_{name}", terms,
+                        True if relation in [">", ">=", "=>"] else False, 
+                        False if "=" in relation else True, constant)
+
+            print(f"CONSTRAINT: {constraint}")
+            problem.add_constraint(constraint)
 
 class Bounds(Section):
 
@@ -234,14 +274,13 @@ class Bounds(Section):
         if relation in [">", ">=", "=>"]:
             var.set_lower_bound(number, strict=False if "=" in relation else True)
         if relation in ["<", "<=", "=<"]:
-            var.set_lower_bound(number, strict=False if "=" in relation else True)
+            var.set_upper_bound(number, strict=False if "=" in relation else True)
         if relation in "=":
             var.set_lower_bound(number, strict=False)
             var.set_upper_bound(number, strict=False)
 
 
     def build_ir(self, problem):
-        print(f"<bounds>")
 
         RELATION_INVERSION = {">": "<",
                               ">=": "<=",
@@ -271,11 +310,11 @@ class Bounds(Section):
                 if tokens[0][0] == "identifier":
                     identifier = tokens[0][1]
                     relation = tokens[1][1]
-                    number = tokens[2][1]
-                elif tokens[0][1] == "number":
+                    number = float(tokens[2][1])
+                elif tokens[0][0] == "number":
                     identifier = tokens[2][1]
                     relation = RELATION_INVERSION[tokens[1][1]]
-                    number = tokens[0][1]
+                    number = float(tokens[0][1])
 
 
                 # We are now of the format:
@@ -295,11 +334,13 @@ class Bounds(Section):
                 if tokens[0][0] != tokens[4][0] or tokens[1][0] != tokens[3][0] or tokens[2][0] != "identifier" or tokens[0][0] != "number" or tokens[1][0] != "relation":
                     error(f"Expected <number, relation, identifier, relation, number> but got something else.  Bound name: {name}, token list: {tokens}")
 
-                lower          = tokens[0][1]
+                lower          = float(tokens[0][1])
                 lower_relation = tokens[1][1]
                 identifier     = tokens[2][1]
                 upper_relation = tokens[3][1]
-                upper          = tokens[4][1]
+                upper          = float(tokens[4][1])
+
+                print(f"## {lower} << {upper}")
 
                 # For us to add these in the same format we need to normalise them to the same format
                 # as the single-bound case above, which means identifier-relation-number.
@@ -310,9 +351,6 @@ class Bounds(Section):
 class IntVars(Section):
 
     def build_ir(self, problem):
-        print(f"<int vars>")
-
-
         for name, tokens in self.tokens.items():
             if len(tokens) > 1 and tokens[0][0] != "identifier":
                 error("Expected only a single token identifier to set to general use.  Rule name: {name}, token list: {tokens}")
@@ -324,14 +362,12 @@ class IntVars(Section):
 class BinVars(Section):
 
     def build_ir(self, problem):
-        print(f"<bin vars>")
-
         for name, tokens in self.tokens.items():
             if len(tokens) > 1 and tokens[0][0] != "identifier":
                 error("Expected only a single token identifier to set to binary mode.  Rule name: {name}, token list: {tokens}")
 
             var = problem.symbols.get(tokens[0][1], create=True)
-            var.set_binary(Talse)
+            var.set_binary(True)
 
 
 
@@ -365,7 +401,7 @@ def parse_string(string):
         section.tokenise()
         section.build_ir(problem)
 
-    return None
+    return problem
 
 def error(msg):
     print(msg)
@@ -417,6 +453,9 @@ def _split_sections(string):
         if new_section:
             sections.append(section)
             section = new_section
+
+    # Catch the last section
+    sections.append(section)
 
     if len(sections) == 0:
         error("No sections found in document.")

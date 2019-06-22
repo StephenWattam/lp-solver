@@ -15,4 +15,16 @@ def main():
 
     filename = sys.argv[2]
     print(f"Loading LP problem from CPLEX LP format, filename={filename}")
-    irep = parse_file(filename)
+    problem = parse_file(filename)
+
+
+    print("")
+    print("Problem constructed")
+    print("")
+    print(f"Objective function: {problem.objective}")
+    print(f"Subject to:")
+    for c in problem.constraints:
+        print(f"  {c.name}: {c}")
+
+    print("Across variables:")
+    print(f"{problem.symbols}")

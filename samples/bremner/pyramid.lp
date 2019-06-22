@@ -1,6 +1,6 @@
 Maximize
   obj: x3
-  + x4 +
+  + 5.6x4 +
   x5
 Subject To
   c1:   x1 + x2 + x3 <=2
@@ -14,7 +14,8 @@ Subject To
 Bounds
   0 <= x1 <=1
   0 <= x2 <= +inf
-  -inf <= x3
+  -inf < x6
+  x7 free
 
   x5 > 3
   3 > x5
