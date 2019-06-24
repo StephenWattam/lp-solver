@@ -1,6 +1,8 @@
 
 
 
+OBJECTIVE_VARIABLE_NAME = "_Z_"
+
 
 class LPProblem:
 
@@ -42,13 +44,34 @@ class LPProblem:
             print(f"  {name}: {var}")
 
 
+class Solution:
+
+    def __init__(self, problem, optimal_variable_values):
+
+        self.problem         = problem
+        self.objective       = optimal_variable_values[problem.symbols.get(OBJECTIVE_VARIABLE_NAME)]
+        self.variables       = {x:y for x, y in optimal_variable_values.items() if not x.slack}
+        self.slack_variables = {x:y for x, y in optimal_variable_values.items() if x.slack}
+
+    def summarise(self):
+
+        print("Problem (transformed for solver):")
+        self.problem.summarise()
+
+        print(f"Optimal result values:")
+        for k, v in self.variables.items():
+            print(f" - {k.name} = {v}")
+
+        print(f"Objective value: {self.objective}")
 
 
 class Variable:
     """Represents a variable in the LP problem"""
 
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, name, slack=False):
+
+        self.name  = name
+        self.slack = slack
         self.set_upper_bound()
         self.set_lower_bound()
         self.set_binary(False)
@@ -84,19 +107,19 @@ class SymbolTable:
         self.table = {}
 
 
-    def get(self, name, create=False):
+    def get(self, name, create=False, slack_if_created=False):
 
         if name in self.table:
             return self.table[name]
         else:
             if create:
-                self.new_variable(name)
+                self.new_variable(name, slack_if_created)
                 return self.get(name)
 
 
-    def new_variable(self, name):
+    def new_variable(self, name, slack=False):
 
-        var              = Variable(name)
+        var              = Variable(name, slack)
         self.table[name] = var
 
         return var

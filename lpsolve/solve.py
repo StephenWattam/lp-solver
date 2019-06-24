@@ -20,8 +20,10 @@ def solve(problem):
 
         tableau.summarise()
 
-    return None
+    optimal_variable_values = tableau.get_result()
 
+    # Strip variables and build a solution object
+    return ir.Solution(problem, optimal_variable_values)
 
 
 
@@ -35,17 +37,18 @@ def solve(problem):
 
 class Tableau:
 
-    OBJECTIVE_KEY = "__obj__"
     CONSTANT_KEY  = "__const__"
 
-    def __init__(self, problem):
+    def __init__(self, problem, float_tolerance=0.001):
 
-        self.table = {}
-        self.table_columns = []     # Cache.  Delete if not needed.
+        self.float_tolerance = float_tolerance
+        self.table           = {}
+        self.table_columns   = []     # Cache.  Delete if not needed.
+        self.objective_key   = problem.objective
 
 
         # Rows correspond to constraint functions
-        for constraint in problem.constraints.values():
+        for constraint in list(problem.constraints.values()) + [problem.objective]:
             # Loop over variables and find their coefficients in the constraints
             self.table[constraint] = {}
             for var in problem.symbols.table.values():
@@ -60,12 +63,6 @@ class Tableau:
             if Tableau.CONSTANT_KEY not in self.table_columns:
                 self.table_columns.append(Tableau.CONSTANT_KEY)
 
-        # Add a row at the end for the objective
-        self.table[Tableau.OBJECTIVE_KEY] = {}
-        for var in problem.symbols.table.values():
-            self.table[Tableau.OBJECTIVE_KEY][var] = problem.objective.find_coefficient_for_variable(var, default=0)
-        self.table[Tableau.OBJECTIVE_KEY][Tableau.CONSTANT_KEY] = 0
-
     def optimal(self):
         """Compute optimality by checking the final (objective function)
         row for any values below zero.
@@ -73,7 +70,7 @@ class Tableau:
         """
 
         for var in self.table_columns:
-            value = self.table[Tableau.OBJECTIVE_KEY][var]
+            value = self.table[self.objective_key][var]
             if value < 0:
                 return False
 
@@ -83,7 +80,7 @@ class Tableau:
 
         smallest_objective_value = 0
         pivot_var = None
-        for var, val in self.table[Tableau.OBJECTIVE_KEY].items():
+        for var, val in self.table[self.objective_key].items():
             if val is not None and val < smallest_objective_value:
                 smallest_objective_value = float(val)
                 pivot_var = var
@@ -131,10 +128,40 @@ class Tableau:
 
                     new_val = neg_val_in_old_tab_pivot_col * val_in_new_tab_pivot_row + old_tab_val
                     new_table[constraint][var] = new_val
-                    print(f"[{isinstance(constraint, str) or constraint.name}][{isinstance(var, str) or var.name}] --> {neg_val_in_old_tab_pivot_col} * {val_in_new_tab_pivot_row} + {old_tab_val} = {new_val}")
+                    # print(f"[{isinstance(constraint, str) or constraint.name}][{isinstance(var, str) or var.name}] --> {neg_val_in_old_tab_pivot_col} * {val_in_new_tab_pivot_row} + {old_tab_val} = {new_val}")
 
         # Mutate self
         self.table = new_table
+
+
+    def get_result(self):
+        """Extract values from the tableau"""
+
+        def float_round(x):
+            if abs(x) < self.float_tolerance:
+                return 0
+            if abs(x) - 1 < self.float_tolerance:
+                return 1
+            return x
+
+        # Lookup table from basic variable to its constraints
+        basic_variables = {}
+        optimal_variable_values = {}
+
+        # Basic variables have a single 1 in their column, and all else are zeroes
+        for var in self.table_columns:
+            if not isinstance(var, str):
+                table_constraints_in_order = list(self.table.keys())
+                column = [float_round(self.table[constraint][var]) for constraint in table_constraints_in_order]
+                # print(f"VAR: {var}.  Column: {column}")
+                if sum([x == 1 for x in column]) == 1:
+                    # print(f"Basic!")
+                    basic_variables[var] = table_constraints_in_order[column.index(1)]
+                    optimal_variable_values[var] = self.table[table_constraints_in_order[column.index(1)]][Tableau.CONSTANT_KEY]
+                else:
+                    optimal_variable_values[var] = 0
+
+        return optimal_variable_values
 
 
     def _copy_table_vals(self, table):

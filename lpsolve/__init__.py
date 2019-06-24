@@ -37,6 +37,9 @@ def main():
     # 3) Build a tableau and assess optimality
     print("3) Solving...")
     solution = solve(problem)
-
     problem.summarise()
+
+
+    # 4) Print the solution
+    solution.summarise()
 
