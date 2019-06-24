@@ -46,12 +46,13 @@ class LPProblem:
 
 class Solution:
 
-    def __init__(self, problem, optimal_variable_values):
+    def __init__(self, problem, variable_values, optimal):
 
         self.problem         = problem
-        self.objective       = optimal_variable_values[problem.symbols.get(OBJECTIVE_VARIABLE_NAME)]
-        self.variables       = {x:y for x, y in optimal_variable_values.items() if not x.slack}
-        self.slack_variables = {x:y for x, y in optimal_variable_values.items() if x.slack}
+        self.optimal         = optimal
+        self.objective       = variable_values[problem.symbols.get(OBJECTIVE_VARIABLE_NAME)]
+        self.variables       = {x:y for x, y in variable_values.items() if not x.slack}
+        self.slack_variables = {x:y for x, y in variable_values.items() if x.slack}
 
     def summarise(self):
 

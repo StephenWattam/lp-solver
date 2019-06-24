@@ -2,7 +2,7 @@
 from copy import copy
 from . import ir
 
-def solve(problem):
+def solve(problem, iteration_limit):
     """Solve the problem!"""
 
     print(f"Building initial tableau")
@@ -10,9 +10,9 @@ def solve(problem):
     tableau.summarise()
 
     itcount = 0
-    while not tableau.optimal():
+    while not tableau.optimal() and itcount < iteration_limit:
         itcount += 1
-        print(f"Iteration: {itcount}")
+        print(f"Iteration: {itcount}/{iteration_limit}")
         print(f"----------------")
 
         var, constraint = tableau._find_pivot()
@@ -20,10 +20,12 @@ def solve(problem):
 
         tableau.summarise()
 
-    optimal_variable_values = tableau.get_result()
+    if not tableau.optimal():
+        print(f"*** Exited in sub-optimal condition due to another stop condition")
+    variable_values = tableau.get_result()
 
     # Strip variables and build a solution object
-    return ir.Solution(problem, optimal_variable_values)
+    return ir.Solution(problem, variable_values, tableau.optimal())
 
 
 

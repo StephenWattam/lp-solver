@@ -68,7 +68,7 @@ def insert_slack_variables(problem):
     for name, constraint in problem.constraints.items():
         if isinstance(constraint, ir.Inequality):
             new_terms = constraint.expression.terms + [(1.0, problem.symbols.new_variable(f"_s_{name}", True))]
-            new_constraints[name] = ir.Equation(problem, f"constraint_eq_{name}", new_terms, constraint.constant)
+            new_constraints[name] = ir.Equation(problem, f"_c_{name}", new_terms, constraint.constant)
         else:
             new_constraints[name] = constraint
 

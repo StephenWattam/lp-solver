@@ -16,6 +16,7 @@ def main():
         sys.exit(1)
 
     filename = sys.argv[2]
+    iteration_limit = 10
 
     # 1) Load the problem from disk
     print(f"1) Loading LP problem from CPLEX LP format, filename={filename}...")
@@ -35,8 +36,8 @@ def main():
 
 
     # 3) Build a tableau and assess optimality
-    print("3) Solving...")
-    solution = solve(problem)
+    print("3) Solving with iteration limit of {iteration_limit}")
+    solution = solve(problem, iteration_limit)
     problem.summarise()
 
 
