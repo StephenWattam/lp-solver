@@ -4,8 +4,6 @@ Maximise
 Such That
  c1: x1 + 3 x2 + 2 x3 <= 10
  c2: -x1 - 5 x2 - x3 >= -8
- test_1: x1 <= 2
-
 Bounds
  x1 >= 0
  x2 >= 0

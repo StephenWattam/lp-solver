@@ -2,7 +2,7 @@
 from copy import copy
 from . import ir
 
-def solve(problem, iteration_limit):
+def solve(problem, iteration_limit, heuristic="lowest"):
     """Solve the problem!"""
 
     print(f"Building initial tableau")
@@ -12,14 +12,19 @@ def solve(problem, iteration_limit):
     itcount = 0
     while not tableau.optimal() and itcount < iteration_limit:
         itcount += 1
+        print("")
         print(f"Iteration: {itcount}/{iteration_limit}")
         print(f"----------------")
 
         print(f"Finding pivot value")
-        tableau.pivot("lowest")
+        tableau.pivot(heuristic)
+
+        print(f"Resulting tableau")
         tableau.summarise()
 
-    if not tableau.optimal():
+    if tableau.optimal():
+        print(f"*** Exited in optimal condition")
+    else:
         print(f"*** Exited in sub-optimal condition due to another stop condition")
     variable_values = tableau.get_result()
 
@@ -40,7 +45,7 @@ class Tableau:
 
     CONSTANT_KEY  = "__const__"
 
-    def __init__(self, problem, float_tolerance=0.001):
+    def __init__(self, problem, float_tolerance=0.00001):
 
         self.float_tolerance = float_tolerance
         self.table           = {}
@@ -72,24 +77,50 @@ class Tableau:
 
         for var in self.table_columns:
             value = self.table[self.objective_key][var]
-            if value <= (-1 * self.float_tolerance):
+            if value < 0:
                 return False
 
         return True
 
-    def pivot(self, method="lowest"):
+    def pivot(self, method):
         """
         lowest --- selects the most extreme value
         bland --- implement's bland's rule
         """
 
-        var, constraint = self._find_pivot_lowest()
+        if method == "lowest":
+            var, constraint = self._find_pivot_lowest()
+        elif method == "bland":
+            var, constraint = self._find_pivot_bland()
+
         self._pivot(var, constraint)
 
     def _find_pivot_bland(self):
         """Find the pivot using bland's rule"""
 
-        return (None, None)
+        for var, val in self.table[self.objective_key].items():
+            print(f"VAR {var if isinstance(var, str) else var.name} = {val}")
+            # Take leftmost TODO: check if this needs an error-tolerant float check
+            if val < 0:
+                print(f"Found pivot var ({var.name} = {val}) < 0")
+                pivot_var = var
+                break
+        print(f"Selected {pivot_var.name} to enter basis")
+
+        # Find indicator by dividing by constant
+        pivot_val        = float("+infinity")
+        pivot_constraint = None
+        for key in self.table.keys():
+            if not isinstance(key, str):
+                val = self.table[key][Tableau.CONSTANT_KEY] / self.table[key][pivot_var] if self.table[key][pivot_var] != 0 else float("+infinity")
+                # print(f"CONST {self.table[key][Tableau.CONSTANT_KEY]} / {self.table[key][pivot_var]} = {val}")
+                # Smallest non-negative indicator
+                if val > 0 and val < pivot_val:
+                    print(f"Found improved pivot 0 <= {val} < {pivot_val}")
+                    pivot_constraint = key
+                    pivot_val = self.table[key][pivot_var]
+
+        return (pivot_var, pivot_constraint)
 
     def _find_pivot_lowest(self):
         """Find the pivot using the 'lowest value' heuristic,
@@ -110,7 +141,7 @@ class Tableau:
         pivot_constraint = None
         for key in self.table.keys():
             if not isinstance(key, str):
-                val = self.table[key][Tableau.CONSTANT_KEY] / self.table[key][pivot_var] if self.table[key][pivot_var] != 0 else 0
+                val = self.table[key][Tableau.CONSTANT_KEY] / self.table[key][pivot_var] if self.table[key][pivot_var] != 0 else float("+infinity")
                 # print(f" ==> {self.table[key][Tableau.CONSTANT_KEY]} / {self.table[key][pivot_var]} = {val}")
                 if lowest_val is None or (val < lowest_val and val > 0):
                     lowest_val       = val
@@ -172,7 +203,7 @@ class Tableau:
                 table_constraints_in_order = list(self.table.keys())
                 column = [float_round(self.table[constraint][var]) for constraint in table_constraints_in_order]
                 # print(f"VAR: {var}.  Column: {column}")
-                if sum([x == 1 for x in column]) == 1:
+                if sum([x == 1 for x in column]) == 1 and sum([x == 0 for x in column]) == (len(column) - 1):
                     # print(f"Basic!")
                     basic_variables[var] = table_constraints_in_order[column.index(1)]
                     optimal_variable_values[var] = self.table[table_constraints_in_order[column.index(1)]][Tableau.CONSTANT_KEY]

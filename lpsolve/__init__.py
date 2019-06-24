@@ -16,13 +16,13 @@ def main():
         sys.exit(1)
 
     filename = sys.argv[2]
-    iteration_limit = 100
+    iteration_limit = 20
+    heuristic = "lowest"
 
     # 1) Load the problem from disk
+    print("")
     print(f"1) Loading LP problem from CPLEX LP format, filename={filename}...")
     problem = parse_file(filename)
-    print("")
-    print("Problem constructed")
     problem.summarise()
 
 
@@ -30,17 +30,19 @@ def main():
 
 
     # 2) Convert to standard form symbolically
+    print("")
     print("2) Converting to standard form...")
     problem = to_standard_form(problem)
 
 
 
     # 3) Build a tableau and assess optimality
-    print("3) Solving with iteration limit of {iteration_limit}")
-    solution = solve(problem, iteration_limit)
-    problem.summarise()
+    print("")
+    print(f"3) Solving with iteration limit of {iteration_limit} using heuristic '{heuristic}'")
+    solution = solve(problem, iteration_limit, heuristic)
 
 
-    # 4) Print the solution
+    print("")
+    print(f"4) Solution summary")
     solution.summarise()
 

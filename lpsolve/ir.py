@@ -65,6 +65,8 @@ class Solution:
             print(f" - {k.name} = {v}")
 
         print(f"Objective value: {self.objective}")
+        if not self.optimal:
+            print(f"*** WARNING: final condition not optimal")
 
 
 class Variable:
