@@ -16,7 +16,7 @@ def main():
         sys.exit(1)
 
     filename = sys.argv[2]
-    iteration_limit = 10
+    iteration_limit = 100
 
     # 1) Load the problem from disk
     print(f"1) Loading LP problem from CPLEX LP format, filename={filename}...")

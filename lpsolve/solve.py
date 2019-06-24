@@ -96,7 +96,7 @@ class Tableau:
         pivot_constraint = None
         for key in self.table.keys():
             if not isinstance(key, str):
-                val = self.table[key][Tableau.CONSTANT_KEY] / self.table[key][pivot_var]
+                val = self.table[key][Tableau.CONSTANT_KEY] / self.table[key][pivot_var] if self.table[key][pivot_var] != 0 else 0
                 # print(f" ==> {self.table[key][Tableau.CONSTANT_KEY]} / {self.table[key][pivot_var]} = {val}")
                 if lowest_val is None or (val < lowest_val and val > 0):
                     lowest_val       = val

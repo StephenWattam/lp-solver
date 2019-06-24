@@ -260,6 +260,7 @@ class Constraints(Section):
             problem.add_constraint(name, constraint)
 
 class Bounds(Section):
+    # FIXME: implement these as constraints!
 
 
     def _set_variable_bounds(self, problem, identifier, relation, number):
@@ -273,11 +274,14 @@ class Bounds(Section):
 
         var = problem.symbols.get(identifier, create=True)
 
+
         if relation in [">", ">=", "=>"]:
             var.set_lower_bound(number, strict=False if "=" in relation else True)
         if relation in ["<", "<=", "=<"]:
             var.set_upper_bound(number, strict=False if "=" in relation else True)
+            # problem.add_constraint(f"vlim_{identifier}_{relation}_{number}", ir.Equation(f"eq_{identifier}_eq_{number}", [(1.0, var)], number))
         if relation in "=":
+            # problem.add_constraint(f"_vlim_{identifier}_{relation}_{number}", problem.get_equation(f"_eq_{identifier}_eq_{number}", [(1.0, var)], number))
             var.set_lower_bound(number, strict=False)
             var.set_upper_bound(number, strict=False)
 
