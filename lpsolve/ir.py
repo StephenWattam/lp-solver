@@ -11,13 +11,14 @@ class LPProblem:
         self.symbols     = SymbolTable()
         self.objective   = None
         self.constraints = {}
+        self.maximise = True
 
     def add_constraint(self, name, constraint):
         self.constraints[name] = constraint
 
-    def set_objective(self, expression, mode):
+    def set_objective(self, expression, maximise):
         self.objective = expression
-        self.mode      = mode
+        self.maximise      = maximise
 
     def get_expression(self, name, terms):
 
@@ -35,7 +36,7 @@ class LPProblem:
         return inequal
 
     def summarise(self):
-        print(f"Objective function: {self.mode}imise {self.objective}")
+        print(f"Objective function: {'max' if self.maximise else 'min' }imise {self.objective}")
         print(f"Subject to:")
         for name, c in self.constraints.items():
             print(f"  {name}: {c}")

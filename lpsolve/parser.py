@@ -198,9 +198,9 @@ class Section:
 
 class Objective(Section):
 
-    def __init__(self, mode):
+    def __init__(self, maximise):
         super().__init__()
-        self.mode = mode
+        self.maximise = maximise
 
     def build_ir(self, problem):
         if len(self.tokens) > 1:
@@ -215,7 +215,7 @@ class Objective(Section):
         terms = self._token_expression_to_terms(problem, name, tokens)
 
         # print(f"{problem.get_expression(name, terms)}")
-        problem.set_objective(problem.get_expression(name, terms), self.mode)
+        problem.set_objective(problem.get_expression(name, terms), self.maximise)
 
 
 class Constraints(Section):
@@ -430,9 +430,9 @@ def _split_sections(string):
 
         new_section = None
         if re.match(SECTION_PATTERN_MAX_OBJECTIVE, line, flags=re.I):
-            new_section = Objective("max")
+            new_section = Objective(maximise=True)
         elif re.match(SECTION_PATTERN_MIN_OBJECTIVE, line, flags=re.I):
-            new_section = Objective("min")
+            new_section = Objective(maximise=False)
         elif re.match(SECTION_PATTERN_CONSTRAINTS, line, flags=re.I):
             new_section = Constraints()
         elif re.match(SECTION_PATTERN_BOUNDS, line, flags=re.I):

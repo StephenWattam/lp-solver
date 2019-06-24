@@ -12,7 +12,7 @@ def to_standard_form(problem):
     """
 
     # Invert objective if suitable
-    if problem.mode == "min":
+    if problem.maximise:
         print("Converting minimise objective into maximise")
         invert_objective(problem)
 
@@ -42,7 +42,7 @@ def invert_objective(problem):
     Simply multiplies the objective expression by -1"""
 
     problem.objective.multiply(-1)
-    problem.mode = "max" if problem.mode == "min" else "max"
+    problem.maximise = not problem.maximise
 
 
 def convert_objective_to_equality(problem):

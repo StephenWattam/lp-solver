@@ -1,5 +1,5 @@
 Maximise
-  obj: -8 x1 - 10 x2 - 7 x3
+  obj: 8 x1 + 10 x2 + 7 x3
 
 Such That
  c1: x1 + 3 x2 + 2 x3 <= 10

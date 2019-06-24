@@ -15,6 +15,7 @@ def solve(problem, iteration_limit):
         print(f"Iteration: {itcount}/{iteration_limit}")
         print(f"----------------")
 
+        print(f"Finding pivot value")
         var, constraint = tableau._find_pivot()
         tableau.pivot(var, constraint)
 
@@ -73,17 +74,18 @@ class Tableau:
 
         for var in self.table_columns:
             value = self.table[self.objective_key][var]
-            if value < 0:
+            if value <= (-1 * self.float_tolerance):
                 return False
 
         return True
 
     def _find_pivot(self):
 
-        smallest_objective_value = 0
-        pivot_var = None
+        smallest_objective_value = None
+        pivot_var                = None
         for var, val in self.table[self.objective_key].items():
-            if val is not None and val < smallest_objective_value:
+            print(f"[ {var} ] = {val}")
+            if smallest_objective_value is None or val < smallest_objective_value:
                 smallest_objective_value = float(val)
                 pivot_var = var
         print(f"Pivot var (col) in objective: {pivot_var} ({smallest_objective_value})")
