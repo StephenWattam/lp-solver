@@ -16,9 +16,7 @@ def solve(problem, iteration_limit):
         print(f"----------------")
 
         print(f"Finding pivot value")
-        var, constraint = tableau._find_pivot()
-        tableau.pivot(var, constraint)
-
+        tableau.pivot("lowest")
         tableau.summarise()
 
     if not tableau.optimal():
@@ -79,7 +77,23 @@ class Tableau:
 
         return True
 
-    def _find_pivot(self):
+    def pivot(self, method="lowest"):
+        """
+        lowest --- selects the most extreme value
+        bland --- implement's bland's rule
+        """
+
+        var, constraint = self._find_pivot_lowest()
+        self._pivot(var, constraint)
+
+    def _find_pivot_bland(self):
+        """Find the pivot using bland's rule"""
+
+        return (None, None)
+
+    def _find_pivot_lowest(self):
+        """Find the pivot using the 'lowest value' heuristic,
+        which can cause cycling"""
 
         smallest_objective_value = None
         pivot_var                = None
@@ -107,7 +121,7 @@ class Tableau:
         return (pivot_var, pivot_constraint)
 
 
-    def pivot(self, pivot_var, pivot_constraint):
+    def _pivot(self, pivot_var, pivot_constraint):
         print(f"Pivoting around row [{pivot_constraint}], col [{pivot_var}] (value: {self.table[pivot_constraint][pivot_var]})")
 
         new_table = self._copy_table_vals(self.table)
